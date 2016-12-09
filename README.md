@@ -1,4 +1,4 @@
-# Database backup Bash shell script for Oracle's Recovery Appliance (ZDLRA) / Reporting database refresh script.
+# Database backup Bash shell script for Oracle's Recovery Appliance (ZDLRA) & Reporting database refresh script
 
 These scripts were tested in an Oracle PeopleSoft environment running Oracle RAC/ASM 12c on Solaris 11 (Oracle SuperCluster) and a ZDLRA X5 system.
 
