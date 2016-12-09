@@ -1,0 +1,7 @@
+connect target sys/<passwd>@<PeopleSoft database>
+connect catalog <appliance admin>/<passwd>@<zdlra catalog database>
+connect auxiliary sys/<passwd>
+run {
+set until SCN &1;
+duplicate target database to '&2';
+}

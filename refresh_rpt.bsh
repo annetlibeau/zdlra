@@ -1,0 +1,132 @@
+#!/bin/bash
+# PeopleSoft reporting database refresh
+# Copyright © 2016 Annet Libeau. Sun Day Consulting, Inc.
+# Assumption: First two characters of production database and reporting database SIDs are the same
+# e.g. CSPRD and CSRPT  
+
+export PROGNAME=$(basename $0)
+export ORACLE_SID=$1
+export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/dbhome_1
+export PATH=$ORACLE_HOME/bin:$PATH
+export ORACLE_BASE=/u01/app/oracle
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib
+export CUR_DTTM=$(date "+%Y-%m-%d.%H.%M.%S")
+export NLS_DATE_FORMAT='dd-mon-rrrr hh24:mi:ss'
+export LOG_DIR=/u01/logs/
+export LOG_FILE=$LOG_DIR$ORACLE_SID.${CUR_DTTM}_refresh1.log
+export SCRIPT_DIR=/u01/scripts/refresh
+
+# Function to display error messages if command returns non-zero exit status
+function error_exit
+{
+        echo "${PROGNAME}: ${1:-"Unknown Error"}" 1>&2 >> $LOG_FILE
+        exit 1
+}
+
+if [ "$1" = "" ]; then
+        error_exit "Line $LINENO: Database instance not specified, e.g. csrpt1. Aborting."  
+else
+
+if [ $USER != 'oracle' ]; then
+        error_exit "Line $LINENO: Must be logged in as oracle to run this script. Aborting." 
+fi
+
+echo "Refresh starting on `date`" >> $LOG_FILE
+
+# If cd command returns a non-zero exit status then call display error function
+cd $SCRIPT_DIR || error_exit "$LINENO: Cannot change directory! Aborting." 
+
+# get the db_unique_name by stripping last character off SID
+id=$(echo ${ORACLE_SID%?})
+
+# convert to uppercase
+id=${id^^}
+
+# make sure this is not production
+if [[ $id == *"PRD"* ]]; then
+        error_exit "Line $LINENO: Parameter should be reporting database, not production. Aborting." 
+fi
+
+echo "Setting Cluster Database parameter to false" >> $LOG_FILE
+sqlplus -s / as sysdba <<EOF >> $LOG_FILE
+	whenever sqlerror exit sql.sqlcode;
+	set echo on
+	alter system set cluster_database=false scope=spfile sid='*';
+EOF
+
+# capture return value from sqlplus session
+sql_return_code=$?
+if [ $sql_return_code != 0 ]; then
+	# error_exit "Line $LINENO: SQL Error $sql_return_code. Aborting."
+	this_sql_err=`grep ORA- $LOG_FILE | sed 's/^//'`
+	error_exit "Line $LINENO: SQL Error - $this_sql_err. Aborting." 
+fi
+
+srvctl stop database -d $id -o immediate || error_exit "Line $LINENO: Error shutting down database $id" 
+
+srvctl start instance -d $id -i $1 -o nomount || error_exit "Line $LINENO: Error starting database $id in nomount mode" 
+
+export ORACLE_SID=+ASM1
+export ORACLE_HOME=/u01/app/12.1.0.2/grid
+export PATH=$ORACLE_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib
+
+asmcmd <<EOF >> $LOG_FILE 
+	rm -f +DATA_EAS01/$id/ONLINELOG/*
+	rm -f +RECO_EAS01/$id/ONLINELOG/*
+	rm -f +DATA_EAS01/$id/DATAFILE/*
+	rm -f +DATA_EAS01/$id/TEMPFILE/*
+	rm -rf +RECO_EAS01/$id/ARCHIVELOG
+EOF
+
+# look for errors in logfile
+this_asm_err=`grep ASMCMD- $LOG_FILE | sed 's/^//'`
+if [[ $this_asm_err ]]; then # expands to nonempty string
+        error_exit "Line $LINENO: SQL Error - $this_asm_err. Aborting."
+fi
+ 
+export ORACLE_SID=$1
+export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/dbhome_1 
+export PATH=$ORACLE_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib
+
+# get first two characters of SID  
+export source=${id:0:2}PRD
+export file_name=${id:0:2}PRD_scn.log
+
+# get the SCN from the file written by the production database backup script
+value=$(<${file_name})
+# add one to the SCN 
+let until_scn=value+1
+echo $until_scn >> $LOG_FILE
+
+rman cmdfile clone_${source}.rcv $until_scn $id >> $LOG_FILE
+
+# look for errors in logfile
+this_rman_err=`grep RMAN- $LOG_FILE | sed 's/^//'`
+if [[ $this_rman_err ]]; then # expands to nonempty string
+        error_exit "Line $LINENO: SQL Error - $this_rman_err. Aborting."
+fi
+
+sqlplus -s / as sysdba <<EOF >> $LOG_FILE
+	whenever sqlerror exit sql.sqlcode;
+        set echo on
+        alter system set cluster_database=true scope=spfile sid='*';
+	-- update ps.psdbowner table
+	@dbowner $id	
+EOF
+
+# capture return value from sqlplus session
+sql_return_code=$?
+if [ $sql_return_code != 0 ]; then
+        # error_exit "Line $LINENO: SQL Error $sql_return_code. Aborting."
+        this_sql_err=`grep ORA- $LOG_FILE | sed 's/^//'`
+        error_exit "Line $LINENO: SQL Error - $this_sql_err. Aborting."
+fi
+
+srvctl stop database -d $id || error_exit "Line $LINENO: Error shutting down database $id after refresh" 
+srvctl start database -d $id || error_exit "Line $LINENO: Error starting database $id after refresh" 
+
+echo "Refresh completed on `date`" >> $LOG_FILE
+
+fi

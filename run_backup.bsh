@@ -1,0 +1,82 @@
+#!/bin/bash
+# Recovery Appliance backup
+# Copyright © 2016 Annet Libeau. Sun Day Consulting, Inc.
+
+export PROGNAME=$(basename $0)
+export ORACLE_SID=$1
+export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/dbhome_1
+export PATH=$ORACLE_HOME/bin:$PATH
+export ORACLE_BASE=/u01/app/oracle
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib
+export CUR_DTTM=$(date "+%Y-%m-%d.%H.%M.%S")
+export NLS_DATE_FORMAT='dd-Mon-YYYY HH24:MI:SS'
+export LOG_DIR=/u01/logs/
+export LOG_FILE=$LOG_DIR$ORACLE_SID.$CUR_DTTM.log
+export THIS_HOST=$(hostname)
+export SCRIPT_DIR=/u01/scripts/zdlra
+export REFRESH_DIR=/u01/scripts/refresh
+
+# Function to display error messages if command returns non-zero exit status
+function error_exit
+{
+	echo "${PROGNAME}: ${1:-"Unknown Error"}" 1>&2 >> $LOG_FILE
+	exit 1
+}
+
+if [ "$1" = "" ]; then
+	error_exit "Line $LINENO: Database instance not specified, e.g. csprd1. Aborting."
+else
+
+if [ $USER != 'oracle' ] ; then
+        error_exit "Line $LINENO: Must be logged on as oracle to run this script. Aborting."
+fi
+
+# If cd command returns a non-zero exit status then call display error function
+cd $SCRIPT_DIR || error_exit "$LINENO: Cannot change directory! Aborting."
+
+# get the db_unique_name by stripping last character off SID
+id=$(echo ${ORACLE_SID%?})
+
+# create unique rman tag
+export tag=${id}_`date +%d%b%y`
+
+# convert to uppercase
+id=${id^^}
+tag=${tag^^}
+
+if [[ $THIS_HOST =~ .*prd.* ]]; then
+	# run incremental level 1 backup
+	echo "Checkpoint and log switch on `date`" >> $LOG_FILE
+	sqlplus / as sysdba <<-EOF >> $LOG_FILE
+		alter system checkpoint;
+		alter system archive log current;
+	EOF
+	echo "Starting Incremental Level 1 backup on `date`" >> $LOG_FILE
+	rman cmdfile run_ibackup.rcv $tag >> $LOG_FILE
+	echo "Incremental Level 1 backup completed on `date`" >> $LOG_FILE
+else
+	# run whole backup
+	echo "Starting Full backup on `date`" >> $LOG_FILE
+	srvctl stop database -d $id || error_exit "Line $LINENO: Error shutting down database $id"
+	srvctl start database -d $id -o mount || error_exit "Line $LINENO: Error starting database $id in mount mode"
+	rman cmdfile run_fbackup.rcv $tag >> $LOG_FILE
+	srvctl stop database -d $id || error_exit "Line $LINENO: Error shutting down database $id"
+	srvctl start database -d $id || error_exit "Line $LINENO: Error starting database $id"
+	echo "Full backup completed on `date`" >> $LOG_FILE
+fi
+
+# File used to store SCN for reporting database refresh
+file_name=${REFRESH_DIR}/${id}_scn.log
+echo "Writing SCN to " $file_name >> $LOG_FILE
+# get the system change number 
+	sqlplus / as sysdba <<-EOF >> $LOG_FILE
+		@get_scn $file_name 
+	EOF
+
+if [ "$2" == "tape" ]; then
+	./to_tape.bsh $1 $tag
+	echo "Copy-to-tape job scheduled on `date`" >> $LOG_FILE
+	exit 0
+fi
+
+fi 

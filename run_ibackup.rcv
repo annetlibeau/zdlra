@@ -1,0 +1,10 @@
+connect target /;   
+connect catalog <virtual private catalog owner>/<passwd>@<zdlra catalog database>;
+run {
+BACKUP TAG '&1' CURRENT CONTROLFILE;
+BACKUP TAG '&1' SPFILE;
+BACKUP TAG '&1' 
+CUMULATIVE INCREMENTAL LEVEL 1 FILESPERSET 1 DATABASE
+PLUS ARCHIVELOG FILESPERSET 32 FORMAT '%d_%I_%T_%t_%U';
+RESTORE DATABASE PREVIEW;
+}

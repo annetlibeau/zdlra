@@ -1,0 +1,2 @@
+export ORACLE_SID=<PeopleSoft database>
+rman cmdfile change_rman_config.rcv

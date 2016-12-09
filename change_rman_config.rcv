@@ -1,0 +1,10 @@
+connect target /;   
+connect catalog <appliance admin>/<passwd>@<zdlra catalog database>;
+run {
+CONFIGURE BACKUP OPTIMIZATION ON;
+CONFIGURE DEFAULT DEVICE TYPE TO 'SBT_TAPE';
+CONFIGURE CONTROLFILE AUTOBACKUP OFF;
+CONFIGURE DEVICE TYPE 'SBT_TAPE' PARALLELISM 4;
+CONFIGURE ARCHIVELOG DELETION POLICY TO BACKED UP 1 TIMES TO 'SBT_TAPE';
+CONFIGURE CHANNEL DEVICE TYPE 'SBT_TAPE' PARMS  "SBT_LIBRARY=/u01/app/oracle/product/12.1.0.2/dbhome_1/lib/libra.so, ENV=(RA_WALLET='location=file:/u01/app/oracle/product/12.1.0.2/dbhome_1/dbs/zdlra credential_alias=<ra cluster SCAN>:1521/<zdlra catalog database>:dedicated')" FORMAT '%d_%I_%T_%t_%U';
+}

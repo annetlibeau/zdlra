@@ -1,0 +1,84 @@
+#!/bin/bash
+# Recovery Appliance Copy-To-Tape
+# Copyright © 2015 Annet Libeau. Sun Day Consulting, Inc.
+
+export PROGNAME=$(basename $0)
+export ORACLE_SID=$1
+export ORACLE_HOME=/u01/app/oracle/product/12.1.0.2/dbhome_1
+export PATH=$ORACLE_HOME/bin:$PATH
+export ORACLE_BASE=/u01/app/oracle
+export LD_LIBRARY_PATH=$ORACLE_HOME/lib:/lib:/usr/lib
+export CUR_DTTM=$(date "+%Y-%m-%d.%H.%M.%S")
+export LOG_DIR=/u01/logs/
+export LOG_FILE=$LOG_DIR$ORACLE_SID.$CUR_DTTM.log
+export THIS_HOST=$(hostname)
+export SCRIPT_DIR=/u01/scripts/zdlra
+file=$1"_count.log"
+
+# Function to display error messages if command returns non-zero exit status
+function error_exit
+{
+        echo "${PROGNAME}: ${1:-"Unknown Error"}" 1>&2 >> $LOG_FILE
+        exit 1
+}
+
+if [ "$1" = "" ]; then
+        error_exit "Line $LINENO: Database instance not specified, e.g. csprd1. Aborting."
+else
+
+if [ "$2 = "" ]; then
+	error_exit "Line $LINENO: Backup Tag not specified. Aborting."
+fi
+
+f [ $USER != 'oracle' ]; then
+        error_exit "Line $LINENO: Must be logged in as oracle to run this script. Aborting."
+fi
+
+# If cd command returns a non-zero exit status then call display error function
+cd $SCRIPT_DIR || error_exit "$LINENO: Cannot change directory! Aborting."
+
+# get the db_unique_name by stripping last character off SID
+id=$(echo ${ORACLE_SID%?})
+
+# convert to uppercase
+id=${id^^}
+
+# Run Incremental Level 1 backup for Production databases
+if [[ $THIS_HOST =~ .*prd.* ]]; then
+# Schedule tier I tape backup job 
+sqlplus <applicance admin>/<passwd>@<zdlra catalog database> <<EOF >> $LOG_FILE
+@to_tape_tierI $2
+EOF
+else 
+# schedule tier II tape backup job 
+sqlplus <appliance admin>/<passwd>@<zdlra catalog database> <<EOF >> $LOG_FILE
+@to_tape_tierII $2 
+EOF
+
+fi
+
+# check ra_sbt_task table for remaining tape jobs
+isdone=99
+while [ $isdone -ne 0 ]; do
+sqlplus <appliance admin>/<passwd>@<zdlra catalog database> <<EOF
+spool $file
+@check_tape $id
+spool off
+exit
+EOF
+
+# read last line of output file and trim spaces
+isdone=`sed -n '$p' $file | xargs`
+echo $isdone
+
+# if isdone is not zero, sleep for 5 minutes and check again
+sleep 5m
+done
+
+rman cmdfile list_backup.rcv $2 >> $LOG_FILE
+
+if [ -f $file ] ; then
+	rm $file  
+fi
+
+fi 

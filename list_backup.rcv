@@ -1,0 +1,5 @@
+connect target /;   
+connect catalog <virtual private catalog owner>/<passwd>@<zdlra catalog database>;
+list backupset of database tag '&1';
+list backup of spfile tag '&1';
+list backup of controlfile tag '&1';
