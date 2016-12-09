@@ -9,16 +9,16 @@ Run zdlra.sql to add the protected database. From RMAN, register the database wi
 Run zdlra.bsh to update the RMAN configuration.
 
 Replace the following references in the scripts with the appropriate values:
-<appliance admin>
-<passwd>
-<zdlra catalog database>
-<ra cluster SCAN>
-<virtual private catalog owner>
-<PeopleSoft database>
-<protection policy>
+&#60;appliance admin&#62;
+&#60;passwd&#62;
+&#60;zdlra catalog database&#62;
+&#60;ra cluster SCAN&#62;
+&#60;virtual private catalog owner&#62;
+&#60;PeopleSoft database&#62;
+&#60;protection policy&#62;
 
-Create a clone_<PeopleSoft database>.rcv file for each database as per the clone_CSPRD.rcv example.
+Create a clone_&#60;PeopleSoft database&#62;.rcv file for each database as per the clone_CSPRD.rcv example.
 
-Run run_backup.bsh. The first parameter is the database instance. Specify 'tape' as a second command line parameter to automatically schedule a Copy-To-Tape job once the backup completes. 
+Run run_backup.bsh. The first parameter is the database instance. Specify <em>tape</em> as a second command line parameter to automatically schedule a Copy-To-Tape job once the backup completes. 
 
 Run refresh_rpt.bsh to refresh a reporting database. The first parameter is the database instance.
