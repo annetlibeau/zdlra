@@ -47,12 +47,28 @@ tag=${tag^^}
 if [[ $THIS_HOST =~ .*prd.* ]]; then
 	# run incremental level 1 backup
 	echo "Checkpoint and log switch on `date`" >> $LOG_FILE
-	sqlplus / as sysdba <<-EOF >> $LOG_FILE
+	sqlplus -s / as sysdba <<-EOF >> $LOG_FILE
+		whenever sqlerror exit sql.sqlcode;
+		set echo on
 		alter system checkpoint;
 		alter system archive log current;
 	EOF
+
+# capture return value from sqlplus session
+sql_return_code=$?
+if [ $sql_return_code != 0 ]; then
+        # error_exit "Line $LINENO: SQL Error $sql_return_code. Aborting."
+        this_sql_err=`grep ORA- $LOG_FILE | sed 's/^//'`
+        error_exit "Line $LINENO: SQL Error - $this_sql_err. Aborting."
+fi
+
 	echo "Starting Incremental Level 1 backup on `date`" >> $LOG_FILE
 	rman cmdfile run_ibackup.rcv $tag >> $LOG_FILE
+        # look for errors in logfile
+        this_rman_err=`grep RMAN- $LOG_FILE | sed 's/^//'`
+        if [[ $this_rman_err ]]; then # expands to nonempty string
+                error_exit "Line $LINENO: RMAN Error - $this_rman_err. Aborting."
+        fi
 	echo "Incremental Level 1 backup completed on `date`" >> $LOG_FILE
 else
 	# run whole backup
@@ -60,6 +76,11 @@ else
 	srvctl stop database -d $id || error_exit "Line $LINENO: Error shutting down database $id"
 	srvctl start database -d $id -o mount || error_exit "Line $LINENO: Error starting database $id in mount mode"
 	rman cmdfile run_fbackup.rcv $tag >> $LOG_FILE
+        # look for errors in logfile
+        this_rman_err=`grep RMAN- $LOG_FILE | sed 's/^//'`
+        if [[ $this_rman_err ]]; then # expands to nonempty string
+                error_exit "Line $LINENO: RMAN Error - $this_rman_err. Aborting."
+        fi
 	srvctl stop database -d $id || error_exit "Line $LINENO: Error shutting down database $id"
 	srvctl start database -d $id || error_exit "Line $LINENO: Error starting database $id"
 	echo "Full backup completed on `date`" >> $LOG_FILE
@@ -69,9 +90,20 @@ fi
 file_name=${REFRESH_DIR}/${id}_scn.log
 echo "Writing SCN to " $file_name >> $LOG_FILE
 # get the system change number 
-	sqlplus / as sysdba <<-EOF >> $LOG_FILE
+	sqlplus -s / as sysdba <<-EOF >> $LOG_FILE
+		whenever sqlerror exit sql.sqlcode;
 		@get_scn $file_name 
 	EOF
+
+# capture return value from sqlplus session
+sql_return_code=$?
+if [ $sql_return_code != 0 ]; then
+        # error_exit "Line $LINENO: SQL Error $sql_return_code. Aborting."
+        this_sql_err=`grep ORA- $LOG_FILE | sed 's/^//'`
+        error_exit "Line $LINENO: SQL Error - $this_sql_err. Aborting."
+fi
+
+echo "Backup completed on `date`" >> $LOG_FILE
 
 if [ "$2" == "tape" ]; then
 	./to_tape.bsh $1 $tag

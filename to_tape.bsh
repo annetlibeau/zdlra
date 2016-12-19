@@ -46,15 +46,24 @@ id=${id^^}
 # Run Incremental Level 1 backup for Production databases
 if [[ $THIS_HOST =~ .*prd.* ]]; then
 # Schedule tier I tape backup job 
-sqlplus <applicance admin>/<passwd>@<zdlra catalog database> <<EOF >> $LOG_FILE
-@to_tape_tierI $2
+sqlplus -s <applicance admin>/<passwd>@<zdlra catalog database> <<EOF >> $LOG_FILE
+	whenever sqlerror exit sql.sqlcode;
+	@to_tape_tierI $2
 EOF
 else 
 # schedule tier II tape backup job 
-sqlplus <appliance admin>/<passwd>@<zdlra catalog database> <<EOF >> $LOG_FILE
-@to_tape_tierII $2 
+sqlplus -s <appliance admin>/<passwd>@<zdlra catalog database> <<EOF >> $LOG_FILE
+	whenever sqlerror exit sql.sqlcode;
+	@to_tape_tierII $2 
 EOF
+fi
 
+# capture return value from sqlplus session
+sql_return_code=$?
+if [ $sql_return_code != 0 ]; then
+        # error_exit "Line $LINENO: SQL Error $sql_return_code. Aborting."
+        this_sql_err=`grep ORA- $LOG_FILE | sed 's/^//'`
+        error_exit "Line $LINENO: SQL Error - $this_sql_err. Aborting."
 fi
 
 # check ra_sbt_task table for remaining tape jobs
@@ -76,6 +85,11 @@ sleep 5m
 done
 
 rman cmdfile list_backup.rcv $2 >> $LOG_FILE
+# look for errors in logfile
+this_rman_err=`grep RMAN- $LOG_FILE | sed 's/^//'`
+if [[ $this_rman_err ]]; then # expands to nonempty string
+        error_exit "Line $LINENO: RMAN Error - $this_rman_err. Aborting."
+fi
 
 if [ -f $file ] ; then
 	rm $file  
