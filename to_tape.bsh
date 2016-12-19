@@ -26,11 +26,11 @@ if [ "$1" = "" ]; then
         error_exit "Line $LINENO: Database instance not specified, e.g. csprd1. Aborting."
 else
 
-if [ "$2 = "" ]; then
+if [ "$2" = "" ]; then
 	error_exit "Line $LINENO: Backup Tag not specified. Aborting."
 fi
 
-f [ $USER != 'oracle' ]; then
+if [ $USER != 'oracle' ]; then
         error_exit "Line $LINENO: Must be logged in as oracle to run this script. Aborting."
 fi
 
