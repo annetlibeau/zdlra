@@ -4,7 +4,7 @@ These scripts were tested in an Oracle PeopleSoft environment running Oracle RAC
 
 Steps to implement:
 
-Run zdlra.sql to add the protected database. From RMAN, register the database with the recovery appliance catalog. If this database will be backed up using an incremental level 1 strategy utilizing real-time redo, change the redo transport user to the virtual private catalog owner.
+Run zdlra.sql to add the protected database. From RMAN, register the database with the recovery appliance catalog. If the database will be backed up using an incremental level 1 strategy utilizing real-time redo, change the redo transport user to the virtual private catalog owner.
 
 Run zdlra.bsh to update the RMAN configuration.
 
